@@ -14,7 +14,7 @@ module.exports.config = {
     name: "0admin",
     version: "1.0.6",
     hasPermssion: 3,
-    credits: "乛 M𝆠፝֟R ཐི༏ཋྀ JU𝆠፝֟W𝆠፝֟ELꜛཐི༏ཋྀ࿐",
+    credits: "乛 M𝆠፝֟R 𝐓𝐀𝐇𝐀 𝐊𝐇𝐀𝐍ꜛཐི༏ཋྀ࿐",
     description: "Admin Config",
     commandCategory: "Admin",
     usages: "Admin",
