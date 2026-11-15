@@ -2,7 +2,7 @@ module.exports.config = {
   name: "settings",
   version: "2.0.0",
   hasPermssion: 2,
-  credits: "乛 M𝆠፝֟R ཐི༏ཋྀ JU𝆠፝֟W𝆠፝֟ELꜛཐི༏ཋྀ࿐",
+  credits: "乛 M𝆠፝֟R 𝐊𝐇𝐀𝐍ꜛཐི༏ཋྀ࿐",
   description: "Bot settings panel",
   commandCategory: "admin",
   usages: "",
@@ -17,8 +17,8 @@ const dataPath = path.join(__dirname, "cache", "data.json");
 const _24hours = 86400000;
 
 // ================== CONFIG ==================
-const TIMEZONE = "Asia/Dhaka";
-const CREDIT = "乛 M𝆠፝֟R ཐི༏ཋྀ JU𝆠፝֟W𝆠፝֟ELꜛཐི༏ཋྀ࿐";
+const TIMEZONE = "Asia/Karachi";
+const CREDIT = "乛 M𝆠፝֟R 𝐓𝐀𝐇𝐀 𝐊𝐇𝐀𝐍ꜛཐི༏ཋྀ࿐";
 const URLS = {
   profile: (id) => `https://www.facebook.com/${id}`,
   messenger: (id) => `https://m.me/${id}`
