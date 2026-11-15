@@ -1,45 +1,95 @@
 const axios = require("axios");
+const fs = require("fs-extra");
+const path = require("path");
+const { pipeline } = require("stream/promises");
 
-module.exports.config = {
- name: "flux",
- version: "2.0",
- hasPermssion: 0,
- credits: "Dipto",
- description: "Flux Image Generator",
- commandCategory: "𝗜𝗠𝗔𝗚𝗘 𝗚𝗘𝗡𝗘𝗥𝗔𝗧𝗢𝗥",
- usage: "{pn} [prompt] --ratio 1024x1024\n{pn} [prompt]",
- countDown: 15,
-};
+module.exports = {
+  config: {
+    name: "flux",
+    aliases: ["imagine", "gen"],
+    version: "4.0.0",
+    author: "TAHA KHAN",
+    role: 0,
+    category: "ai",
+    guide: { en: "{pn} <prompt>" }
+  },
 
-module.exports.run = async ({ event, args, api }) => {
- const dipto = "https://www.noobs-api.rf.gd/dipto";
+  async onStart({ api, event, args, message }) {
+    const { threadID, messageID, senderID } = event;
+    const prompt = args.join(" ").trim();
 
- try {
- const prompt = args.join(" ");
- const [prompt2, ratio = "1:1"] = prompt.includes("--ratio")
- ? prompt.split("--ratio").map(s => s.trim())
- : [prompt, "1:1"];
+    if (!prompt) return message.reply("🎨 Misaal: `flux a cute cat`");
 
- const startTime = Date.now();
+    api.setMessageReaction("🎨", messageID, () => {}, true);
+    await message.reply(`🎨 **"${prompt}"** ki image bana raha hoon...\n⏳ Wait karo (10-20 sec)`);
 
- const waitMessage = await api.sendMessage("Generating image, please wait... 😘", event.threadID);
- api.setMessageReaction("⌛", event.messageID, () => {}, true);
+    const cacheDir = path.join(__dirname, "cache");
+    await fs.ensureDir(cacheDir);
+    const filePath = path.join(cacheDir, `flux_${senderID}_${Date.now()}.jpg`);
+    
+    let downloaded = false;
 
- const apiurl = `${dipto}/flux?prompt=${encodeURIComponent(prompt2)}&ratio=${encodeURIComponent(ratio)}`;
- const response = await axios.get(apiurl, { responseType: "stream" });
+    // ===== TRY 1: UZAIR API =====
+    try {
+      const { data } = await axios.post("https://uzairrajputapis.qzz.io/api/ai/flux", { prompt }, { timeout: 45000 });
+      
+      // Link extract karo
+      const strData = JSON.stringify(data);
+      const match = strData.match(/(https?:\/\/[^\s"'\\]+)/);
+      
+      if (match && match[0]) {
+        const uzairUrl = match[0];
+        console.log("[Uzair URL]", uzairUrl);
+        
+        // Download try karo (with headers)
+        const res = await axios({ 
+          url: uzairUrl, 
+          method: "GET", 
+          responseType: "stream", 
+          timeout: 60000,
+          headers: { 
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+          }
+        });
+        await pipeline(res.data, fs.createWriteStream(filePath));
+        downloaded = true;
+      }
+    } catch (e) { 
+      console.warn("[Uzair API Fail]", e.message); 
+    }
 
- const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+    // ===== TRY 2: POLLINATIONS API (Fallback) =====
+    if (!downloaded) {
+      console.log("[Using Pollinations Fallback]");
+      const pollUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?model=flux&nologo=true&width=1024&height=1024`;
+      
+      try {
+        const res = await axios({ 
+          url: pollUrl, 
+          method: "GET", 
+          responseType: "stream", 
+          timeout: 90000, // Pollinations ko time lagta hai
+          headers: { "User-Agent": "Mozilla/5.0" }
+        });
+        await pipeline(res.data, fs.createWriteStream(filePath));
+        downloaded = true;
+      } catch (e) {
+        console.error("[Pollinations Fail]", e.message);
+      }
+    }
 
- api.setMessageReaction("✅", event.messageID, () => {}, true);
- api.unsendMessage(waitMessage.messageID);
-
- api.sendMessage({
- body: `Here's your image (Generated in ${timeTaken} seconds)`,
- attachment: response.data,
- }, event.threadID, event.messageID);
-
- } catch (e) {
- console.error(e);
- api.sendMessage("Error: " + e.message, event.threadID, event.messageID);
- }
+    // ===== SEND OR ERROR =====
+    if (downloaded) {
+      api.setMessageReaction("✅", messageID, () => {}, true);
+      await message.reply({
+        body: `🎨 **Prompt:** ${prompt}\n\n»» TAHA KHAN ««`,
+        attachment: fs.createReadStream(filePath)
+      });
+      setTimeout(() => { fs.unlink(filePath).catch(() => {}); }, 5000);
+    } else {
+      api.setMessageReaction("❌", messageID, () => {}, true);
+      return message.reply(`❌ Image download fail ho gayi. Dono APIs down hain.\n👉 Thodi der baad try karo.`);
+    }
+  }
 };

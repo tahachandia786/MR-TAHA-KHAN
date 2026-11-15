@@ -1,98 +1,86 @@
-const axios = require("axios");
-const fs = require("fs-extra");
+const fs = require("fs");
 const path = require("path");
+const axios = require("axios");
+const { loadImage, createCanvas } = require("canvas");
 
-module.exports.config = {
-  name: "kiss",
-  version: "1.0.0",
-  hasPermssion: 0,
-  credits: "SHAHADAT SAHU", //please don't change credit
-  description: "Generate a couple kiss image using sender and target Facebook UID via Avatar Canvas API",
-  commandCategory: "banner",
-  usePrefix: true,
-  usages: "[@mention | reply]",
-  cooldowns: 5,
-  dependencies: {
-    "axios": "",
-    "fs-extra": "",
-    "path": ""
-  }
-};
+module.exports = {
+  config: {
+    name: "kiss",
+    version: "1.5",
+    author: "Amit Max ⚡",
+    countDown: 5,
+    role: 0,
+    shortDescription: "A fun kiss picture!",
+    longDescription: "A fun command to create a kiss picture with the given positions.",
+    category: "fun",
+    guide: "{pn} @mention or reply",
+  },
 
-module.exports.run = async function ({ event, api }) {
-  const { threadID, messageID, senderID, mentions, messageReply } = event;
+  onStart: async function ({ event, api, usersData }) {
+    let mention = Object.keys(event.mentions)[0];
+    let targetID = mention || event.messageReply?.senderID;
 
-  let targetID = null;
+    if (!targetID)
+      return api.sendMessage("কাকে চুমু দিবে? ট্যাগ কর বা কারো রিপ্লাই দাও!", event.threadID, event.messageID);
 
-  if (mentions && Object.keys(mentions).length > 0) {
-    targetID = Object.keys(mentions)[0];
-  } else if (messageReply && messageReply.senderID) {
-    targetID = messageReply.senderID;
-  }
+    const senderID = event.senderID;
 
-  if (!targetID) {
-    return api.sendMessage(
-      "Please reply or mention someone......",
-      threadID,
-      messageID
-    );
-  }
+    const getAvatar = async (uid) => {
+      try {
+        const url = `https://graph.facebook.com/${uid}/picture?width=512&height=512&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`;
+        const avatarPath = path.join(__dirname, `${uid}_avatar.png`);
+        const res = await axios.get(url, { responseType: "arraybuffer" });
+        fs.writeFileSync(avatarPath, res.data);
+        return avatarPath;
+      } catch (err) {
+        console.error(`Error fetching avatar for user ${uid}: ${err.message}`);
+        return "";
+      }
+    };
 
-  try {
-    const apiList = await axios.get(
-      "https://raw.githubusercontent.com/shahadat-sahu/SAHU-API/refs/heads/main/SAHU-API.json"
-    );
+    const bg = await loadImage("https://i.imgur.com/VniSzhD.png"); 
+    const canvas = createCanvas(bg.width, bg.height);
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(bg, 0, 0);
 
-    const AVATAR_CANVAS_API = apiList.data.AvatarCanvas;
+    const senderAvatarPath = await getAvatar(senderID);
+    const targetAvatarPath = await getAvatar(targetID);
 
-    const res = await axios.post(
-      `${AVATAR_CANVAS_API}/api`,
-      {
-        cmd: "kiss",
-        senderID,
-        targetID
-      },
-      { responseType: "arraybuffer", timeout: 30000 }
-    );
+    const senderAvatar = await loadImage(senderAvatarPath);
+    const targetAvatar = await loadImage(targetAvatarPath);
 
-    const imgPath = path.join(
-      __dirname,
-      "cache",
-      `kiss_${senderID}_${targetID}.png`
-    );
+    
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(340, 120, 60, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(targetAvatar, 280, 60, 120, 120);
+    ctx.restore();
 
-    fs.writeFileSync(imgPath, res.data);
+    
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(500, 70, 60, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(senderAvatar, 440, 10, 120, 120);
+    ctx.restore();
 
-    const captions = [
-      "কারণে অকারণে প্রতিদিন নিয়ম করে, তোমার মায়াতে জড়িয়ে পড়ছি আমি বারেবার!🌷",
-      "তোমাকে কেন ভালোবাসি তার কোন বিশেষ কারণ আমার জানা নাই! কিন্তু তোমার কাছে সারাজীবন থেকে যাওয়ার হাজারটা কারণ আমার কাছে আছে!💚",
-      "তোমার সাথে কাটানো সময়গুলোর কথা চিন্তা করলে মনে হয়, এই এক জনম তোমার সাথে অনেক কম সময়!😘",
-      "প্রিয় তুমি কি আমার জীবনের সেই গল্প হবে? যেই গল্পের শুরু থাকবে, কিন্তু কোনো শেষ থাকবে না!♥️",
-      "তুমি পাশে থাকলে সবকিছু সুন্দর মনে হয়, জীবন যেন একটা মধুর কবিতায় রূপ নেয়!😍",
-      "তোমাকে ছাড়া জীবনটা অসম্পূর্ণ, তুমি আমার ভালোবাসার পূর্ণতা!🧡",
-      "তুমি আমার স্বপ্ন, তুমি আমার জীবনের প্রতিটি সুন্দর মুহূর্ত!🌻",
-      "আমার চোখে তোমার অস্থিত্ব খোঁজতে এসোনা, হারিয়ে যাবে! কেননা আমার পুরোটা-জুরেই তোমারই নির্বাক আনাগোনা!🌺",
-      "তোমাতে শুরু তোমাতেই শেষ, তুমি না থাকলে আমাদের গল্প এখানেই শেষ!😘",
-      "ভালোবাসা যদি কোনো অনুভূতি হয়, তাহলে তোমার প্রতি আমার অনুভূতি পৃথিবীর সেরা অনুভূতি।🌻ღ🌺"
-    ];
+    const output = path.join(__dirname, "kiss_output.png");
+    fs.writeFileSync(output, canvas.toBuffer("image/png"));
 
-    const caption = captions[Math.floor(Math.random() * captions.length)];
+    const senderName = await usersData.getName(senderID);
+    const targetName = event.mentions[mention] || (event.messageReply?.senderName || "Friend");
 
-    return api.sendMessage(
-      {
-        body: caption,
-        attachment: fs.createReadStream(imgPath)
-      },
-      threadID,
-      () => fs.unlinkSync(imgPath),
-      messageID
-    );
-
-  } catch {
-    return api.sendMessage(
-      "API Error Call Boss SAHU",
-      threadID,
-      messageID
-    );
+    api.sendMessage({
+      body: `❤️ Kiss time! \n${senderName} gave a kiss to ${targetName}! 💋`,
+      attachment: fs.createReadStream(output),
+      mentions: [{ tag: targetName, id: targetID }],
+    }, event.threadID, () => {
+      fs.unlinkSync(output);
+      fs.unlinkSync(senderAvatarPath);
+      fs.unlinkSync(targetAvatarPath);
+    }, event.messageID);
   }
 };

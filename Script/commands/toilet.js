@@ -1,77 +1,73 @@
 const axios = require("axios");
-const fs = require("fs-extra");
+const fs = require("fs");
 const path = require("path");
 
-module.exports.config = {
-  name: "toilet",
-  version: "1.0.0",
-  credits: "SHAHADAT SAHU",
-  description: "Generate a couple banner image using sender and target Facebook UID via Avatar Canvas API",
-  commandCategory: "banner",
-  usePrefix: true,
-  usages: "[@mention | reply]",
-  cooldowns: 5
+const baseApiUrl = async () => {
+  const base = await axios.get(
+    "https://raw.githubusercontent.com/mahmudx7/HINATA/main/baseApiUrl.json"
+  );
+  return base.data.mahmud;
 };
 
-module.exports.run = async function ({ api, event, Currencies }) {
-  const { threadID, messageID } = event;
+/**
+* @author MahMUD
+* @author: do not delete it
+*/
 
-  try {
-    const apiList = await axios.get(
-      "https://raw.githubusercontent.com/shahadat-sahu/SAHU-API/refs/heads/main/SAHU-API.json"
-    );
+module.exports = {
+  config: {
+    name: "toilet",
+    version: "1.7",
+    author: "MahMUD",
+    role: 0,
+    category: "fun",
+    cooldown: 10,
+    guide: "[mention/reply/UID]",
+  },
 
-    const AVATAR_CANVAS_API = apiList.data.AvatarCanvas;
-
-    const targetID =
-      Object.keys(event.mentions || {})[0] ||
-      event.messageReply?.senderID;
-
-    if (!targetID) {
+  onStart: async function({ api, event, args }) {
+    const obfuscatedAuthor = String.fromCharCode(77, 97, 104, 77, 85, 68); 
+    if (module.exports.config.author !== obfuscatedAuthor) {
       return api.sendMessage(
-        "Please reply or mention someone......",
+        "You are not authorized to change the author name.\n", 
+        event.threadID, 
+        event.messageID
+      );
+    }
+
+    const { senderID, mentions, threadID, messageID, messageReply } = event;
+    let id;
+    if (Object.keys(mentions).length > 0) {
+      id = Object.keys(mentions)[0];
+    } else if (messageReply) {
+      id = messageReply.senderID;
+    } else if (args[0]) {
+      id = args[0]; 
+    } else {
+      return api.sendMessage(
+        "❌ Mention, reply, or give UID to make toilet someone",
         threadID,
         messageID
       );
     }
 
-    const senderID = event.senderID;
+    try {
+      const apiUrl = await baseApiUrl();
+      const url = `${apiUrl}/api/toilet?user=${id}`;
 
-    const randomPercent = Math.floor(Math.random() * 101);
-    const randomAmount = Math.floor(Math.random() * 100000) + 100000;
-    await Currencies.increaseMoney(senderID, parseInt(randomPercent * randomAmount));
+      const response = await axios.get(url, { responseType: "arraybuffer" });
+      const filePath = path.join(__dirname, `toilet_${id}.png`);
+      fs.writeFileSync(filePath, response.data);
+      
+      api.sendMessage(
+        { attachment: fs.createReadStream(filePath), body: "ওয়াক থু 🤮" },
+        threadID,
+        () => fs.unlinkSync(filePath),
+        messageID
+      );
 
-    const res = await axios.post(
-      `${AVATAR_CANVAS_API}/api`,
-      {
-        cmd: "toilet",
-        senderID: senderID,
-        targetID: targetID
-      },
-      {
-        responseType: "arraybuffer",
-        timeout: 30000
-      }
-    );
-
-    const imgPath = path.join(__dirname, "cache", `toilet_${Date.now()}.png`);
-    fs.writeFileSync(imgPath, res.data);
-
-    return api.sendMessage(
-      {
-        body: "বেশি বাল পাকলামির জন্য তোরে টয়লেটে ফেলে দিলাম🤣🤮",
-        attachment: fs.createReadStream(imgPath)
-      },
-      threadID,
-      () => fs.unlinkSync(imgPath),
-      messageID
-    );
-
-  } catch (e) {
-    return api.sendMessage(
-      "API Error Call JUWEL",
-      threadID,
-      messageID
-    );
+    } catch (err) {
+      api.sendMessage(`🥹error, contact MahMUD.`, threadID, messageID);
+    }
   }
 };

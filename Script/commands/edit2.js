@@ -1,85 +1,54 @@
 const axios = require("axios");
-const fs = require("fs-extra");
-const path = require("path");
-
-const API_ENDPOINT = "https://tawsif.is-a.dev/gemini/nano-banana";
 
 module.exports = {
   config: {
-    name: "editpro",
-    aliases: ["edit2", "nanopro"],
-    version: "1.0",
-    author: "MOHAMMAD AKASH",
+    name: "edit2",
+    version: "0.0.7",
+    author: "Siam Ahmed Saan",
     countDown: 5,
     role: 0,
-    shortDescription: "AI image editing from prompt + image",
-    longDescription: "Reply to an image or send URL with prompt, and AI will edit the image.",
+    shortDescription: "Edit image",
+    longDescription: "Reply to any image",
     category: "image",
-    guide: {
-      en: "{pn} <prompt> <image_url>\nReply to an image: {pn} <prompt>"
-    }
+    guide: "{pn} [text]"
   },
 
-  onStart: async function ({ message, event, args }) {
+  onStart: async function ({ api, event, args }) {
+
+    const react = (emoji) => api.setMessageReaction(emoji, event.messageID, () => {}, true);
+
     try {
-      let prompt = args.join(" ").trim();
-      let imageUrl;
+      const prompt = args.join(" ");
 
-      // If user replied to an image
-      if (event.messageReply && event.messageReply.attachments?.length > 0) {
-        const att = event.messageReply.attachments[0];
-        if (att.type === "photo") imageUrl = att.url;
+      if (!prompt) {
+        react("⚠️");
+        return api.sendMessage("⚠️ | Please provide text.", event.threadID);
       }
 
-      // If message contains a URL
+      const imageUrl = event.messageReply?.attachments[0]?.url;
+
       if (!imageUrl) {
-        const findUrl = args.find(x => x.startsWith("http"));
-        if (findUrl) {
-          imageUrl = findUrl;
-          prompt = prompt.replace(findUrl, "").trim();
-        }
+        react("🖼️");
+        return api.sendMessage("🖼️ | Please reply to an image.", event.threadID);
       }
 
-      if (!imageUrl)
-        return message.reply("❌ Please reply to an image or provide an image URL.");
+      react("⏳");
 
-      if (!prompt)
-        return message.reply("❌ Please write a prompt.\nExample: !editpro cartoon effect");
+      const apiUrl = `https://azadx69x.is-a.dev/api/editor?url=${encodeURIComponent(imageUrl)}&prompt=${encodeURIComponent(prompt)}`;
 
-      await message.reply("⏳ Processing your image...");
+      const response = await axios.get(apiUrl, { responseType: "stream" });
 
-      const apiUrl = `${API_ENDPOINT}?prompt=${encodeURIComponent(prompt)}&url=${encodeURIComponent(imageUrl)}`;
-      const res = await axios.get(apiUrl);
+      react("✅");
 
-      if (!res.data.success || !res.data.imageUrl)
-        throw new Error(res.data.error || "Invalid API response");
+      api.sendMessage({
+        body: `✅ Image edited successfully!\n📝 Prompt: ${prompt}`,
+        attachment: response.data
+      }, event.threadID);
 
-      const editedURL = res.data.imageUrl;
-
-      // Download edited image
-      const imgStream = await axios.get(editedURL, { responseType: "stream" });
-
-      const cache = path.join(__dirname, "cache");
-      if (!fs.existsSync(cache)) fs.ensureDirSync(cache);
-
-      const filePath = path.join(cache, `edit_${Date.now()}.png`);
-      const writer = fs.createWriteStream(filePath);
-
-      imgStream.data.pipe(writer);
-      await new Promise((resolve, reject) => {
-        writer.on("finish", resolve);
-        writer.on("error", reject);
-      });
-
-      await message.reply({
-        body: `✨ Edited image generated!\nPrompt: ${prompt}`,
-        attachment: fs.createReadStream(filePath)
-      });
-
-      fs.unlinkSync(filePath);
-
-    } catch (err) {
-      return message.reply("❌ Failed to edit the image.\nError: " + err.message);
+    } catch (error) {
+      console.error(error);
+      react("❌");
+      api.sendMessage("❌ | Failed to process image.", event.threadID);
     }
   }
 };

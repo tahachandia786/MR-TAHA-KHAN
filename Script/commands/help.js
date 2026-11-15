@@ -1,201 +1,132 @@
 const fs = require("fs-extra");
 const axios = require("axios");
+const path = require("path");
+const { getPrefix } = global.utils;
+const { commands, aliases } = global.GoatBot;
+const doNotDelete = "〲 𝐓𝐀𝐇𝐀 𝐊𝐇𝐀𝐍〲";
 
-module.exports.config = {
-  name: "help",
-  version: "6.1.0",
-  hasPermssion: 0,
-  credits: "乛 MR ཐི༏ཋྀ JU𝆠፝֟W𝆠፝֟ELꜛཐི༏ཋྀ࿐",
-  description: "All commands in one serial list + command info",
-  commandCategory: "system",
-  usages: "[command name]",
-  cooldowns: 5
-};
-
-// ── 𝙼𝚘𝚗𝚘 𝙵𝚘𝚗𝚝 (𝙰𝙱𝙲𝙳 / 𝚊𝚋𝚌𝚍 / 𝟶𝟷𝟸𝟹) ──
-function toMono(text) {
-  return Array.from(String(text)).map(c => {
-    const code = c.codePointAt(0);
-    if (code >= 65 && code <= 90)  return String.fromCodePoint(0x1D670 + code - 65); // A-Z
-    if (code >= 97 && code <= 122) return String.fromCodePoint(0x1D68A + code - 97); // a-z
-    if (code >= 48 && code <= 57)  return String.fromCodePoint(0x1D7F6 + code - 48); // 0-9
-    return c;
-  }).join("");
-}
-
-// ── ⚙ সেটিংস ──
-const USER_COOLDOWN = 5 * 60 * 1000;   // একই ইউজার ৫ মিনিটের আগে আবার help দিতে পারবে না
-const AUTO_DELETE   = 5 * 60 * 1000;   // ৫ মিনিট পর মেসেজ অটো ডিলিট
-const userCooldowns = new Map();
-
-// ── 🗑️ অটো ডিলিট ──
-function scheduleDelete(api, info) {
-  if (!info || !info.messageID) return;
-  setTimeout(() => {
-    try { api.unsendMessage(info.messageID); } catch (e) {}
-  }, AUTO_DELETE);
-}
-
-function sendAutoDelete(api, msg, threadID, replyID) {
-  return api.sendMessage(msg, threadID, (err, info) => {
-    if (!err) scheduleDelete(api, info);
-  }, replyID);
-}
-
-// ── config.json পড়া ──
-function readConfig() {
-  try {
-    const configPath = __dirname + "/../../config.json";
-    if (fs.existsSync(configPath)) {
-      return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+function getDescription(config, langCode) {
+    let desc = config.shortDescription || config.description || config.longDescription;
+    if (!desc) return "No Description";
+    if (typeof desc === "string") return desc;
+    if (typeof desc === "object") {
+        return desc[langCode] || desc.en || Object.values(desc)[0] || "No Description";
     }
-  } catch (e) {}
-  return {};
+    return "No Description";
 }
 
-function getPrefix() {
-  const cfgJson = readConfig();
-  return cfgJson.PREFIX || global.config?.PREFIX || "!";
+function getGuideText(config, langCode, prefix) {
+    let guide = config.guide;
+    if (!guide) return "";
+
+    if (typeof guide === "string") {
+    } else if (typeof guide === "object") {
+        let langGuide = guide[langCode] || guide.en;
+        if (langGuide) {
+            guide = langGuide;
+        } else {
+            if (guide.body) guide = guide.body;
+            else {
+                const values = Object.values(guide);
+                if (values.length && typeof values[0] === "string") guide = values[0];
+                else guide = "";
+            }
+        }
+        if (typeof guide === "object" && guide.body) guide = guide.body;
+    }
+
+    if (typeof guide !== "string") guide = "";
+    return guide.replace(/\{pn\}/g, prefix + config.name).replace(/\{p\}/g, prefix);
 }
 
-// ── 📋 নির্দিষ্ট কমান্ডের তথ্য ──
-async function sendCommandInfo(api, event, commandName) {
-  const { threadID, messageID } = event;
-  const { commands } = global.client;
-  const prefix = getPrefix();
+module.exports = {
+    config: {
+        name: "help",
+        version: "2.0",
+        author: "𝐓𝐀𝐇𝐀 𝐊𝐇𝐀𝐍",
+        countDown: 6,
+        role: 0,
+        shortDescription: { en: "View command usage" },
+        longDescription: { en: "View command usage" },
+        category: "info",
+        guide: { en: "{pn} [page | command name]" },
+        priority: 1
+    },
 
-  const cmd = commands.get(commandName.toLowerCase());
-  if (!cmd) {
-    return sendAutoDelete(api,
-      `╔════════════════╗\n║  ❌ ${toMono("NOT FOUND")} ❌  ║\n╚════════════════╝\n\n` +
-      `「 ${toMono(commandName)} 」 নামে কোনো কমান্ড নেই!\n\n` +
-      `📌 ${toMono("All commands")}: ${toMono(prefix + "help")}`,
-      threadID, messageID
-    );
-  }
+    langs: {
+        en: {
+            help2: "📋 𝗖𝗢𝗠𝗠𝗔𝗡𝗗 𝗟𝗜𝗦𝗧  (𝗣𝗮𝗴𝗲 %2/%3)\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n%1━━━━━━━━━━━━━━━━━━━━━━━━━━\n📊 𝗧𝗼𝘁𝗮𝗹: %4 𝗰𝗼𝗺𝗺𝗮𝗻𝗱𝘀\n💡 𝗨𝘀𝗲: %5𝐡𝐞𝐥𝐩 <𝐧𝐮𝐦>\n👤 %6",
+            help: "⚡ 𝗔𝗩𝗔𝗜𝗟𝗔𝗕𝗟𝗘 𝗖𝗢𝗠𝗠𝗔𝗡𝗗𝗦 ⚡\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n%1━━━━━━━━━━━━━━━━━━━━━━━━━━\n📊 𝗧𝗼𝘁𝗮𝗹: %2 𝗰𝗼𝗺𝗺𝗮𝗻𝗱𝘀\n🔑 𝗣𝗿𝗲𝗳𝗶𝘅: [ %3 ]\n✨ %4",
+            commandNotFound: "⚠️ 𝗖𝗼𝗺𝗺𝗮𝗻𝗱 \"%1\" 𝗻𝗼𝘁 𝗳𝗼𝘂𝗻𝗱!",
+            getInfoCommand: "📌 𝗖𝗢𝗠𝗠𝗔𝗡𝗗 𝗜𝗡𝗙𝗢𝗥𝗠𝗔𝗧𝗜𝗢𝗡\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n🏷️ 𝗡𝗮𝗺𝗲: %1\n📝 𝗗𝗲𝘀𝗰𝗿𝗶𝗽𝘁𝗶𝗼𝗻: %2\n🖇️ 𝗔𝗹𝗶𝗮𝘀𝗲𝘀: %3\n🧬 𝗩𝗲𝗿𝘀𝗶𝗼𝗻: %4\n🛡️ 𝗣𝗲𝗿𝗺𝗶𝘀𝘀𝗶𝗼𝗻: %5\n⏳ 𝗖𝗼𝗼𝗹𝗱𝗼𝘄𝗻: %6𝘀\n👤 𝗔𝘂𝘁𝗵𝗼𝗿: %7\n━━━━━━━━━━━━━━━━━━━━━━━━━━\n📖 𝗨𝗦𝗔𝗚𝗘\n%8\n━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            pageNotFound: "❌ Page %1 is out of range!"
+        }
+    },
 
-  const cfg = cmd.config || {};
-  const cfgJson = readConfig();
-  const botName = cfgJson.BOTNAME || "⎯꯭𓆩꯭𝆺𝅥😻⃞𝐑⃞𝐈⃞𝐘⃞𝐀⃞༢࿐";
-  const ownerName = cfgJson.OWNER_NAME || "乛 M𝆠፝֟R ཐི༏ཋྀ JU𝆠፝֟W𝆠፝֟ELꜛཐི༏ཋྀ࿐";
+    onStart: async function ({ message, args, event, threadsData, getLang, role }) {
+        const langCode = await threadsData.get(event.threadID, "data.lang") || global.GoatBot.config.language;
+        const { threadID } = event;
+        const threadData = await threadsData.get(threadID);
+        const prefix = getPrefix(threadID);
 
-  const permMap = {
-    0: "👤 " + toMono("All User"),
-    1: "🛡️ " + toMono("Group Admin"),
-    2: "👑 " + toMono("Bot Admin"),
-    3: "🔱 " + toMono("Owner")
-  };
-  const perm = permMap[cfg.hasPermssion] || permMap[0];
+        const commandName = (args[0] || "").toLowerCase();
+        const command = commands.get(commandName) || commands.get(aliases.get(commandName));
 
-  const infoText =
-`╔════════════════╗
-║  ✨ ${toMono("COMMAND INFO")} ✨
-╠════════════════╣
-║ 🔖 ${toMono("Name")} ⇢ ${toMono(cfg.name || commandName)}
-║ 📄 ${toMono("Usage")} ⇢ ${toMono(cfg.usages || "No usage")}
-║ 📜 ${toMono("Desc")} ⇢ ${toMono(cfg.description || "No description")}
-║ 🔑 ${toMono("Perm")} ⇢ ${perm}
-║ 👨‍💻 ${toMono("Credit")} ⇢ ${cfg.credits || "Unknown"}
-║ 📂 ${toMono("Category")} ⇢ ${toMono(cfg.commandCategory || "system")}
-║ ⏳ ${toMono("Cooldown")} ⇢ ${toMono(cfg.cooldowns || 0)}s
-╠════════════════╣
-║ ⚙ ${toMono("Prefix")} ⇢ ${toMono(prefix)}
-║ 🤖 ${toMono("Bot")} ⇢ ${botName}
-║ 👑 ${toMono("Owner")} ⇢ ${ownerName}
-╚════════════════╝`;
+        if (!command && (!args[0] || !isNaN(args[0]))) {
+            const arrayInfo = [];
+            let msg = "";
 
-  return sendAutoDelete(api, infoText, threadID, messageID);
-}
+            if (!isNaN(args[0]) || (threadData.settings && threadData.settings.sortHelp === "name")) {
+                const page = parseInt(args[0]) || 1;
+                const numberOfOnePage = 20;
 
-// ── 🔥 Main Help Function ──
-async function sendHelp(api, event, args) {
-  if (args && args.length > 0) {
-    return sendCommandInfo(api, event, args[0].trim());
-  }
+                for (const [name, value] of commands) {
+                    if (value.config.role > role) continue;
+                    arrayInfo.push({ data: name, priority: value.priority || 0 });
+                }
 
-  const { commands } = global.client;
-  const { threadID, messageID } = event;
-  const prefix = getPrefix();
+                arrayInfo.sort((a, b) => b.priority - a.priority || a.data.localeCompare(b.data));
+                const { allPage, totalPage } = global.utils.splitPage(arrayInfo, numberOfOnePage);
+                if (page < 1 || page > totalPage) return message.reply(getLang("pageNotFound", page));
 
-  // সব কমান্ড A-Z সিরিয়ালে
-  const allCmds = [...new Set(
-    [...commands.keys()].map(n => (n || "").trim()).filter(Boolean)
-  )].sort((a, b) => a.localeCompare(b));
+                msg = allPage[page - 1].reduce((text, item, index) => text += ` ${(page-1)*numberOfOnePage + index + 1}. ${item.data}\n`, "");
+                return message.reply(getLang("help2", msg, page, totalPage, arrayInfo.length, prefix, doNotDelete));
+            } else {
+                const categories = {};
+                for (const [, value] of commands) {
+                    if (value.config.role > role) continue;
+                    const cat = value.config.category?.toUpperCase() || "OTHERS";
+                    if (!categories[cat]) categories[cat] = [];
+                    categories[cat].push(value.config.name);
+                }
 
-  // ── এক সিরিয়ালে লিস্ট: প্রতি লাইনে একটা কমান্ড, কোনো ফাঁক নেই ──
-  const pad = String(allCmds.length).length;
-  const commandList = allCmds.map((cmd, i) =>
-    `【${toMono(String(i + 1).padStart(pad, "0"))}】 ➜ ${toMono(cmd)}`
-  ).join("\n");
+                const emoji = "📃";
 
-  const finalText =
-`┏━━━━━━━━━━━━━━━━┓
-   ✿ ${toMono("COMMAND LIST")} ✿
-┗━━━━━━━━━━━━━━━━┛
-${commandList}
-┏━━━━━━━━━━━━━━━━┓
-  ✦ ${toMono("Total")}: ${toMono(allCmds.length)} ${toMono("Commands")} ✦
-  📌 ${toMono("Info")}: ${toMono(prefix)}${toMono("help")} ${toMono("<cmd>")}
-┗━━━━━━━━━━━━━━━━┛`;
+                Object.keys(categories).sort().forEach(cat => {
+                    const count = categories[cat].length;
+                    const cmdList = categories[cat].sort().map(n => n).join(", ");
+                    msg += `\n┌──『 ${emoji} ${cat} (${count}) 』\n└➤ ${cmdList}\n`;
+                });
 
-  const cacheDir = __dirname + "/cache";
-  const imgPath = cacheDir + "/helpallbg.jpg";
-  const bg = "https://i.imgur.com/MZOc4a3.jpeg";
+                return message.reply(getLang("help", msg, commands.size, prefix, doNotDelete));
+            }
+        }
 
-  try {
-    fs.ensureDirSync(cacheDir);
+        if (!command) return message.reply(getLang("commandNotFound", args[0]));
 
-    const res = await axios({
-      url: encodeURI(bg),
-      method: "GET",
-      responseType: "stream",
-      headers: { "User-Agent": "Mozilla/5.0" }
-    });
+        const config = command.config;
+        const description = getDescription(config, langCode);
+        const usage = getGuideText(config, langCode, prefix);
 
-    const writer = fs.createWriteStream(imgPath);
-    res.data.pipe(writer);
-
-    writer.on("finish", () => {
-      api.sendMessage(
-        { body: finalText, attachment: fs.createReadStream(imgPath) },
-        threadID,
-        (err, info) => {
-          try { fs.unlinkSync(imgPath); } catch (e) {}
-          if (!err) scheduleDelete(api, info);
-        },
-        messageID
-      );
-    });
-
-    writer.on("error", () => {
-      sendAutoDelete(api, finalText, threadID, messageID);
-    });
-
-  } catch (error) {
-    console.error("Error:", error);
-    sendAutoDelete(api, finalText, threadID, messageID);
-  }
-}
-
-// ── শুধু prefix দিয়ে চলবে ──
-module.exports.run = async function ({ api, event, args }) {
-  const { threadID, messageID, senderID } = event;
-  const now = Date.now();
-  const last = userCooldowns.get(senderID);
-
-  if (last && now - last < USER_COOLDOWN) {
-    const remain = Math.ceil((USER_COOLDOWN - (now - last)) / 1000);
-    const min = Math.floor(remain / 60);
-    const sec = remain % 60;
-    return sendAutoDelete(
-      api,
-      `⏳ ${toMono("Cooldown")}!\n\n` +
-      `আপনি এইমাত্র help কমান্ড ব্যবহার করেছেন।\n` +
-      `আবার ব্যবহার করতে অপেক্ষা করুন: ${min} মিনিট ${sec} সেকেন্ড`,
-      threadID, messageID
-    );
-  }
-
-  userCooldowns.set(senderID, now);
-  return sendHelp(api, event, args);
+        return message.reply(getLang("getInfoCommand",
+            config.name.toUpperCase(),
+            description,
+            config.aliases?.join(", ") || "None",
+            config.version || "1.0.0",
+            config.role == 0 ? "All Users" : config.role == 1 ? "Admins" : "Bot Owner",
+            config.countDown || 1,
+            config.author || "Unknown",
+            usage.split("\n").map(line => `   ${line}`).join("\n")
+        ));
+    }
 };

@@ -1,71 +1,65 @@
 const axios = require('axios');
-const fs = require('fs');
+const fs = require('fs-extra');
+const path = require('path');
+
+const API_BASE = "https://tenzo.is-a.dev/api/tools/4k";
+const CACHE_DIR = path.join(__dirname, 'cache');
+
+function extractImageUrl(args, event) {
+  let imageUrl = args.find(arg => arg.startsWith('http'));
+  if (!imageUrl && event.messageReply?.attachments?.length > 0) {
+    const img = event.messageReply.attachments.find(a => a.type === 'photo' || a.type === 'image');
+    if (img?.url) imageUrl = img.url;
+  }
+  return imageUrl;
+}
 
 module.exports = {
   config: {
     name: "4k",
-    version: "1.0.0",
-    hasPermssion: 0,
-    credits: "SHAHADAT SAHU", //don't change credit
-    description: "Enhance Photo - Reply with image to upscale",
-    commandCategory: "Image Editing Tools",
-    usages: "Reply to an image",
-    cooldowns: 5
+    version: "4.1",
+    author: "Siam Ahmed Saan",
+    countDown: 15,
+    role: 0,
+    category: "image",
+    guide: "4k <url> OR reply to image"
   },
 
-  handleEvent: async ({ api, event }) => {
-    const { body, messageReply, threadID, messageID } = event;
-    if (body?.toLowerCase().trim() === "4k") {
-      if (!messageReply?.attachments?.length)
-        return api.sendMessage("📸 Please reply to an image!", threadID, messageID);
+  onStart: async function ({ args, message, event }) {
+    const imageUrl = extractImageUrl(args, event);
+    if (!imageUrl) return message.reply("❌ Please provide an image URL or reply to an image");
 
-      await processImage(api, threadID, messageID, messageReply);
+    if (!fs.existsSync(CACHE_DIR)) fs.mkdirSync(CACHE_DIR, { recursive: true });
+    await message.reaction("⏳", event.messageID);
+
+    let filePath;
+    try {
+      const response = await axios.get(`${API_BASE}?url=${encodeURIComponent(imageUrl)}`, {
+        responseType: 'stream',
+        timeout: 120000
+      });
+
+      filePath = path.join(CACHE_DIR, `4k_${Date.now()}.jpg`);
+      const writer = fs.createWriteStream(filePath);
+      response.data.pipe(writer);
+
+      await new Promise((resolve, reject) => {
+        writer.on('finish', resolve);
+        writer.on('error', reject);
+      });
+
+      await message.reaction("🎀", event.messageID);
+      await message.reply({
+        body: `✅ | Your image has been upscaled`,
+        attachment: fs.createReadStream(filePath)
+      });
+      
+      setTimeout(() => fs.unlink(filePath).catch(() => {}), 10000);
+
+    } catch (e) {
+      await message.reaction("❌", event.messageID);
+      await message.reply(`❌ ${e.message}`);
+      if (filePath && fs.existsSync(filePath)) fs.unlink(filePath).catch(() => {});
     }
-  },
-
-  run: async ({ api, event }) => {
-    const { threadID, messageID, messageReply } = event;
-    if (!messageReply?.attachments?.length)
-      return api.sendMessage("📸 Reply to an image to enhance!", threadID, messageID);
-
-    await processImage(api, threadID, messageID, messageReply);
   }
 };
-
-async function processImage(api, threadID, messageID, messageReply) {
-  const tempPath = __dirname + "/cache/4k.jpg";
-  const img = messageReply.attachments[0].url;
-
-  try {
-    const configUrl =
-      "https://raw.githubusercontent.com/shahadat-sahu/SAHU-API/refs/heads/main/SAHU-API.json";
-
-    const apiConfig = await axios.get(configUrl);
-    const apiUrl = apiConfig.data["4k"];
-
-    const wait = await api.sendMessage("⏳ Enhancing your photo in 4K...", threadID);
-
-    const enhanceUrl = `${apiUrl}?imageUrl=${encodeURIComponent(img)}`;
-    const res = await axios.get(enhanceUrl);
-    const resultImg = res.data?.result;
-
-    if (!resultImg) throw new Error("No result");
-
-    const buffer = (await axios.get(resultImg, { responseType: "arraybuffer" })).data;
-    fs.writeFileSync(tempPath, Buffer.from(buffer, "binary"));
-
-    api.sendMessage(
-      {
-        body: "✔️ 4K Enhance Successful!",
-        attachment: fs.createReadStream(tempPath)
-      },
-      threadID,
-      () => fs.unlinkSync(tempPath),
-      messageID
-    );
-
-    api.unsendMessage(wait.messageID);
-  } catch (e) {
-    api.sendMessage("❌ API Error! Boss JUWEL ke message din!", threadID, messageID);
-  }
-}
