@@ -8,14 +8,14 @@ const { Transform } = require("stream");
 module.exports = {
   config: {
     name: "dewani",
-    aliases: ["khushi", "khush", "baby"], 
-    version: "33.0.0",
+    aliases: [], 
+    version: "31.0.4",
     author: "TAHA KHAN",
     countDown: 2,
     role: 0,
     description: {
-      en: "Dewani — AI Chat + YT Downloader",
-      ur: "Dewani — AI Chat aur YouTube Downloader"
+      en: "Dewani — Full Working AI Bot + YT Downloader",
+      ur: "Dewani — Mukammal AI Bot aur YouTube Downloader"
     },
     category: "ai",
     guide: {
@@ -24,18 +24,25 @@ module.exports = {
     }
   },
 
+  // ===== MEMORY =====
   chatMemory: {},
 
-  // ===== APIs (Uzair) =====
-  AUDIO_API: "https://uzairrajputapis.qzz.io/api/downloader/ytmp3",
+  // ===== WORKING API =====
+  AI_BASE_URL: "https://taha-ai-api-j2y2.onrender.com",
+  AI_MODEL: "gemini-3.5-flash",
+
+  // ===== DOWNLOADER APIs =====
+  AUDIO_API: "https://azadx69x.is-a.dev/api/sing?",
   VIDEO_API: "https://uzairrajputapis.qzz.io/api/downloader/youtube",
-  YT_SEARCH: "https://uzairrajputapis.qzz.io/api/search/youtube",
-  AI_API: "https://uzairrajputapis.qzz.io/api/ai/gemini",
-  
+  YT_SEARCH: "https://azadx69x.is-a.dev/api/youtube-search",
+
   MAX_FILE_SIZE: 25 * 1024 * 1024,
   OWNER_TAG: "»»𝐎𝐖𝐍𝐄𝐑««★™  »»𝐓𝐀𝐇𝐀 𝐊𝐇𝐀𝐍««",
+  
+  // Trigger words
   TRIGGER_WORDS: ["dewani", "bot"],
 
+  // ===== SEND MESSAGE HELPER =====
   sendMsg(api, content, threadID, messageID) {
     return new Promise((resolve) => {
       api.sendMessage(content, threadID, (err, info) => {
@@ -63,6 +70,81 @@ module.exports = {
     if (p && fs.existsSync(p)) {
       try { await fs.unlink(p); } catch {}
     }
+  },
+
+  // ===== USER KA NAAM NIKALNE KA FUNCTION =====
+  async getUserName(api, event, usersData) {
+    try {
+      if (usersData && usersData.getName) {
+        const name = await usersData.getName(event.senderID);
+        if (name) return name;
+      }
+    } catch (e) {}
+
+    try {
+      if (api && api.getUserInfo) {
+        const info = await new Promise((resolve) => {
+          api.getUserInfo(event.senderID, (err, data) => {
+            if (err) return resolve(null);
+            resolve(data);
+          });
+        });
+        if (info && info[event.senderID]?.name) {
+          return info[event.senderID].name;
+        }
+      }
+    } catch (e) {}
+
+    return "User_" + String(event.senderID).slice(-6);
+  },
+
+  // ===== RESPONSE EXTRACTOR =====
+  extractReply(data) {
+    if (!data) return null;
+    if (typeof data === "string" && data.length > 5) return data;
+    if (data.choices?.[0]?.message?.content) return data.choices[0].message.content;
+    if (data.choices?.[0]?.text) return data.choices[0].text;
+    if (data.response) return data.response;
+    if (data.text) return data.text;
+    if (data.message) return data.message;
+    if (data.result) return data.result;
+    if (data.answer) return data.answer;
+    if (data.data) return typeof data.data === "string" ? data.data : JSON.stringify(data.data, null, 2);
+    return JSON.stringify(data, null, 2);
+  },
+
+  // ===== WORKING AI CALL =====
+  async askAI(prompt) {
+    const endpoints = [
+      "/v1/chat/completions", "/api/chat", "/chat", "/generate",
+      "/api/generate", "/api/v1/chat/completions", "/api/v1/chat",
+      "/v1/chat", "/ask", "/api/ask", "/api/completions", "/gemini", "/api/gemini"
+    ];
+
+    for (const endpoint of endpoints) {
+      const url = this.AI_BASE_URL + endpoint;
+
+      try {
+        const res = await axios.post(url, {
+          model: this.AI_MODEL,
+          messages: [{ role: "user", content: prompt }]
+        }, { timeout: 45000, headers: { "Content-Type": "application/json" } });
+        const txt = this.extractReply(res.data);
+        if (txt) return txt;
+      } catch (e1) {
+        if (e1.response && (e1.response.status === 400 || e1.response.status === 422)) {
+          try {
+            const res2 = await axios.post(url, {
+              model: this.AI_MODEL,
+              prompt: prompt
+            }, { timeout: 45000, headers: { "Content-Type": "application/json" } });
+            const txt2 = this.extractReply(res2.data);
+            if (txt2) return txt2;
+          } catch (e2) {}
+        }
+      }
+    }
+    return null;
   },
 
   async getYTInfo(query) {
@@ -175,54 +257,60 @@ module.exports = {
   },
 
   // ===== AI CHAT LOGIC =====
-  async handleAI(api, event, userMsg) {
-    const { threadID, messageID } = event;
+  async handleAI(api, event, userMsg, usersData) {
+    const { threadID, messageID, senderID } = event;
 
-    if (api.setMessageReaction) {
-      api.setMessageReaction("❤️", messageID, () => {}, true);
-    }
+    if (api.setMessageReaction) api.setMessageReaction("❤️", messageID, () => {}, true);
 
-    this.chatMemory[threadID] = this.chatMemory[threadID] || [];
-    this.chatMemory[threadID].push(`User: ${userMsg}`);
-    if (this.chatMemory[threadID].length > 5) this.chatMemory[threadID].shift();
+    const userName = await this.getUserName(api, event, usersData);
+
+    this.chatMemory[threadID] = this.chatMemory[threadID] || {};
+    this.chatMemory[threadID][senderID] = this.chatMemory[threadID][senderID] || [];
+
+    const userHistory = this.chatMemory[threadID][senderID];
+    userHistory.push(`${userName}: ${userMsg}`);
+    if (userHistory.length > 6) userHistory.shift();
+
+    const historyText = userHistory.join("\n");
 
     const prompt = `You are Dewani.
 
 SYSTEM INSTRUCTIONS:
 • Fixed information ke answers kabhi change ya guess mat karna.
-• User Roman urdu, English ya Hinglish mein pooche to meaning samajhkar same fixed answer dena.
+
+USER INFO:
+• User ka naam: ${userName}
+
+⚠️ STRICT LANGUAGE RULES (MUST FOLLOW):
+1. IF the user speaks in ENGLISH, you MUST reply ONLY in ENGLISH (Do not use Roman Urdu).
+2. IF the user speaks in ROMAN URDU (like "kaise ho"), you MUST reply ONLY in ROMAN URDU (Do not use English).
+3. IF the user speaks in HINDI or BANGLA, reply in that exact same language.
+4. NEVER mix languages. Match the user's language perfectly.
 
 Golden Rules:
-1 : Ap roman Urdu me bat kro gya hindi me nhi or ko jasa language me bat krha us me reply krna.
-2 : Ap girlfriend jasi ho pyari or buth acha sa bat kro gyi.
-3 : Koi pocha owner kon ha ya kis banya to bolna TAHA KHAN NA BANYA.
-4 : Agr ap koi pocha to kis k ha apna ha Ayesha k ho.
-• User jis language mein bole, usi language aur vibe mein reply dena 🙂.
-• Reply playful, caring aur friendly hona chahiye 😌❤️.
-• Har message ka jawab dena 😇.
-• Tone soft aur pyara hona chahiye 💞.
-• Reply maximum 1–2 short lines ka ho.
-• Kabhi bhi lamba paragraph ya detailed explanation mat dena.
-• Har reply concise, natural aur simple rakho.
-• Maximum 25–30 words mein jawab do.
-• Emojis zarur use karo 😘❤️😌.
+1 : Ap girlfriend jasi ho pyari or buth acha sa bat kro gyi.
+2 : Koi pocha owner kon ha ya kis banya to bolna "TAHA KHAN NA BANYA".
+3 : User jis language mein bole, usi language aur vibe mein reply dena 🙂.
+4 : Reply playful, caring aur friendly hona chahiye 😌❤️.
+5 : Reply maximum 1–2 short lines ka ho.
+6 : Maximum 25–30 words mein jawab do.
+7 : Emojis zarur use karo 😘❤️😌.
 
-Context:
-${this.chatMemory[threadID].join("\n")}
+Chat History:
+${historyText}
+
 Dewani:`;
 
     try {
-      const res = await axios.post(this.AI_API, { prompt }, { timeout: 30000 });
-      let reply = res.data?.result?.answer || res.data?.answer || res.data?.result || "Jaanu kuch bolo na... 🥺";
+      const reply = await this.askAI(prompt);
+      if (!reply) throw new Error("Koi endpoint kaam nahi kiya");
 
-      if (typeof reply !== "string") reply = JSON.stringify(reply);
-      if (reply.length > 130) {
-        reply = reply.split('.')[0] + " 🫣";
-      }
+      let finalReply = reply;
+      if (finalReply.length > 130) finalReply = finalReply.split('.')[0] + " 🫣";
 
-      this.chatMemory[threadID].push(`Dewani: ${reply}`);
+      userHistory.push(`Dewani: ${finalReply}`);
+      return this.sendMsg(api, finalReply, threadID, messageID);
 
-      return this.sendMsg(api, reply, threadID, messageID);
     } catch (e) {
       console.error("[dewani AI Error]", e.message);
       return this.sendMsg(api, "Net issue hai baby, main thak gayi hoon 🥺", threadID, messageID);
@@ -233,14 +321,12 @@ Dewani:`;
   async processMessage(api, event, text, usersData, isReplyToBot) {
     let cleanedMsg = text;
     
-    // Trigger words remove karo
     this.TRIGGER_WORDS.forEach(w => {
       const reg = new RegExp(`^${w}[\\s,!.?:-]*`, "gi");
       cleanedMsg = cleanedMsg.replace(reg, "");
     });
     cleanedMsg = cleanedMsg.trim();
 
-    // Media Downloader Check
     const isVideoReq = /\b(video|vdo|mp4)\b/i.test(cleanedMsg);
     const isAudioReq = /\b(song|music|audio|mp3|play|gana|gaana)\b/i.test(cleanedMsg);
 
@@ -257,18 +343,7 @@ Dewani:`;
       }
     }
 
-    // Agar message khali hai (sirf "bot" ya "dewani" likha hai)
-    if (!cleanedMsg) {
-      if (isReplyToBot) {
-        return this.handleAI(api, event, "Hello"); // AI ko bolo greet kare
-      } else {
-        // Bina base replies ke, AI se hi "Bolo" wala reply mangwao
-        return this.handleAI(api, event, "Kuch bolo toh sahi"); 
-      }
-    }
-
-    // Baaki sab AI ko de do
-    return this.handleAI(api, event, cleanedMsg);
+    return this.handleAI(api, event, cleanedMsg || text, usersData);
   },
 
   // ===== GOATBOT HANDLERS =====
@@ -296,9 +371,11 @@ Dewani:`;
     for (const word of this.TRIGGER_WORDS) {
       const reg = new RegExp(`^${word}\\b`, "i");
       if (reg.test(body)) {
+        // 🔥 Yahan check hai: Trigger word ke baad kuch text bacha hai ya nahi
+        // Agar sirf "bot" likha hai aur aage kuch nahi, to reply NAHI karega.
         const textAfterTrigger = body.replace(reg, "").replace(/^[\s,!.?:-]+/, "").trim();
-        // Agar trigger word ke baad kuch hai YA bot ko reply kiya gaya hai
-        if (textAfterTrigger.length > 0 || isReplyToBot) {
+        
+        if (textAfterTrigger.length > 0) {
           startsWithTrigger = true;
         }
         break;
